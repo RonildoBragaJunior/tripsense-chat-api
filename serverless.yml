@@ -50,6 +50,11 @@ functions:
         events:
             - websocket:
                 route: getRecentMessages
+    getRecentConnections:
+        handler: handler.get_recent_connections
+        events:
+            - websocket:
+                route: getRecentConnections
     sendMessage:
         handler: handler.send_message
         events:

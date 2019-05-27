@@ -9,12 +9,6 @@ logger.setLevel(logging.DEBUG)
 dynamodb = boto3.resource("dynamodb")
 
 
-def ping(event, context):
-    """
-    Sanity check endpoint that echoes back 'PONG' to the sender.
-    """
-    logger.info("Ping requested.")
-    return _get_response(200, "PONG!")
 
 def _get_body(event):
     try:
@@ -29,11 +23,15 @@ def _get_response(status_code, body):
     return {"statusCode": status_code, "body": body}
 
 def _send_to_connection(connection_id, data, event):
-    gatewayapi = boto3.client("apigatewaymanagementapi",
-            endpoint_url = "https://" + event["requestContext"]["domainName"] +
-                    "/" + event["requestContext"]["stage"])
-    return gatewayapi.post_to_connection(ConnectionId=connection_id,
-            Data=json.dumps(data).encode('utf-8'))
+    gatewayapi = boto3.client("apigatewaymanagementapi",endpoint_url = "https://" + event["requestContext"]["domainName"] +"/" + event["requestContext"]["stage"])
+    return gatewayapi.post_to_connection(ConnectionId=connection_id,Data=json.dumps(data).encode('utf-8'))
+
+def ping(event, context):
+    """
+    Sanity check endpoint that echoes back 'PONG' to the sender.
+    """
+    logger.info("Ping requested.")
+    return _get_response(200, "PONG!")
 
 def default_message(event, context):
     """
@@ -67,6 +65,29 @@ def get_recent_messages(event, context):
 
     return _get_response(200, "Sent recent messages.")
 
+def get_recent_connections(event, context):
+    """
+    Return the 10 most recent chat messages.
+    """
+    logger.info("Retrieving most recent connections.")
+    connectionID = event["requestContext"].get("connectionId")
+
+    # Get the all the connections
+    table = dynamodb.Table("serverless-chat_Connections")
+    response = table.scan()
+    items = response.get("Items", [])
+
+    # Extract the relevant data and order chronologically
+    messages = [{"connectionId": x["ConnectionID"]}
+            for x in items]
+    messages.reverse()
+
+    # Send them to the client who asked for it
+    data = {"messages": messages}
+    _send_to_connection(connectionID, data, event)
+
+    return _get_response(200, "Sent recent connections.")
+
 def send_message(event, context):
     """
     When a message is sent on the socket, forward it to all connections.
@@ -82,6 +103,7 @@ def send_message(event, context):
             return _get_response(400, "'{}' not in message dict"\
                     .format(attribute))
 
+    # TODO Find a better way to get the index
     # Get the next message index
     table = dynamodb.Table("serverless-chat_Messages")
     response = table.query(KeyConditionExpression="Room = :room",
